@@ -1,0 +1,18 @@
+tables:
+  - name: todos
+    columns:
+      - name: id
+        type: integer
+        primary_key: true
+      - name: title
+        type: text
+        not_null: true
+      - name: done
+        type: boolean
+        default: false
+      - name: priority
+        type: text
+      - name: due_date
+        type: date
+      - name: owner
+        type: text

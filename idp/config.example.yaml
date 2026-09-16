@@ -1,0 +1,34 @@
+# keycloak-mockup configuration.
+#
+# This is the tracked reference; scripts/gen-certs.sh renders the actual
+# config into certs/idp-config.yaml by replacing the marker below with the
+# generated IdP private key. Edit users/roles here, then regenerate (or
+# re-provision, which regenerates when certs are missing).
+#
+# The role names in realm_roles must match the pgprovision roles and the
+# access_filter rules (examples: editor, manager, viewer).
+realm: myrealm
+client_id: myclient
+host: "0.0.0.0"
+port: 5151
+base_url: "http://localhost:5151"
+insecure_cookies: true
+access_token_ttl: 300
+refresh_token_ttl: 1800
+# private_key_pem: generated
+users:
+  - username: alice
+    password: alice123
+    email: alice@example.com
+    name: Alice
+    realm_roles: [editor]
+  - username: bob
+    password: bob123
+    email: bob@example.com
+    name: Bob
+    realm_roles: [manager]
+  - username: carol
+    password: carol123
+    email: carol@example.com
+    name: Carol
+    realm_roles: [viewer]

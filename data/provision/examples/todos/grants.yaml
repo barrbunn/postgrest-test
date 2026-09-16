@@ -1,0 +1,25 @@
+# Table grants. The `anon` role is what PostgREST uses for anonymous HTTP
+# requests (PGRST_DB_ANON_ROLE, created by db/init) - it needs SELECT to serve
+# the table. `editor` is a yaml-defined role with write access; combined with
+# its grant_to in roles.yaml, a JWT with role=editor can POST.
+grants:
+  - user: anon
+    tables:
+      - todos
+    permissions: [select]
+  - user: editor
+    tables:
+      - todos
+    permissions: [select, insert, update, delete]
+  - user: manager
+    tables:
+      - todos
+    permissions: [select]
+  - user: viewer
+    tables:
+      - todos
+    permissions: [select]
+  - user: test_anon
+    tables:
+      - todos
+    permissions: [select]

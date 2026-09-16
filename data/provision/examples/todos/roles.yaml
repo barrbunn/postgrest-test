@@ -1,0 +1,15 @@
+# Group roles without login. See the note in users.yaml about the baseline
+# roles. `grant_to` makes the authenticator a member of the role, which is
+# required for PostgREST to switch into it via a JWT (`role` claim).
+roles:
+  - name: test_anon
+    login: false
+  - name: editor
+    login: false
+    grant_to: [authenticator]
+  - name: manager
+    login: false
+    grant_to: [authenticator]
+  - name: viewer
+    login: false
+    grant_to: [authenticator]

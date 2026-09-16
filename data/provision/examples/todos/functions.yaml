@@ -1,0 +1,13 @@
+# Custom SQL functions. A schema-qualified name gets its schema created
+# automatically (CREATE SCHEMA IF NOT EXISTS + GRANT USAGE TO PUBLIC, so
+# PostgREST can invoke it for every request role).
+functions:
+  - name: auth.check_token
+    returns: void
+    language: plpgsql
+    body: |
+      begin
+        if current_setting('request.headers', true)::json->>'x-block' = 'yes' then
+          raise insufficient_privilege using hint = 'blocked by pre-request';
+        end if;
+      end

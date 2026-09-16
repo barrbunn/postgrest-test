@@ -1,0 +1,7 @@
+# In-database PostgREST configuration. Settings map to ALTER ROLE <role> SET
+# pgrst.<setting> = '<value>' and override the container env. PostgREST picks
+# them up on 'reload config' without a restart.
+postgrest:
+  role: authenticator
+  settings:
+    db_pre_request: auth.check_token

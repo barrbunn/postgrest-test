@@ -1,0 +1,16 @@
+# Column-visibility rules for the pgrmapper filtering proxy. For each
+# (role, table), visible_columns is the maximum projection that role may see
+# through the proxy. Roles/tables without a rule are not filtered.
+access_filter:
+  - role: anon
+    table: todos
+    visible_columns: [id, title]
+  - role: editor
+    table: todos
+    visible_columns: [id, title, done, priority]
+  - role: manager
+    table: todos
+    visible_columns: [id, title, done, priority, due_date, owner]
+  - role: viewer
+    table: todos
+    visible_columns: [id, title]

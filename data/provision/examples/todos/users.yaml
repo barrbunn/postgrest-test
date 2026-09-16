@@ -1,0 +1,7 @@
+# Login roles (database users). Deliberately avoid the baseline roles
+# anon/authenticator (created by db/init/01-roles.sh), which would make the
+# generated CREATE ROLE statements fail on apply.
+users:
+  - name: testuser
+    password: testuser_password
+    login: true
