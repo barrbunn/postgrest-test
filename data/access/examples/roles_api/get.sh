@@ -25,6 +25,15 @@ set +a
 PATH_ARG="${1:?usage: get.sh <path> [query-string]}"
 QUERY="${2:-}"
 
+case "$QUERY" in
+    *"="* | "")
+        ;;
+    *)
+        echo "error: the query string must be URL-encoded key=value pairs (e.g. 'select=*'), got: '$QUERY'" >&2
+        exit 1
+        ;;
+esac
+
 GATEWAY="${PGR_TEST_GATEWAY_ADDRESS:-http://localhost:${NGINX_PORT:-8080}}"
 USERNAME="${PGR_TEST_USER:-alice}"
 PASSWORD="${PGR_TEST_PASSWORD:-alice123}"

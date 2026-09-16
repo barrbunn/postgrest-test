@@ -5,8 +5,11 @@
 // 2. Claim extraction: role = realm_access.roles[0].
 // 3. GenerateJWT: sign a service JWT (RS256, gateway private key) that
 //    embeds the original user JWT.
-// 4. Forward via an internal subrequest carrying the service JWT and
-//    X-User-Role headers (the subrequest location does mTLS proxy_pass).
+//
+// The handler runs in the nginx access phase (js_access): it rejects bad
+// requests and, on success, sets $service_jwt/$user_role for the
+// proxy_set_header directives. The response is then streamed by nginx's
+// proxy_pass directly - no buffering, no size limits.
 
 import fs from 'fs';
 
@@ -159,13 +162,8 @@ async function handle(r) {
 
     r.variables.service_jwt = serviceJwt;
     r.variables.user_role = role;
-
-    const args = r.variables.args ? '?' + r.variables.args : '';
-    r.subrequest('/_backend' + r.uri + args, function (res) {
-        r.status = res.status;
-        r.headersOut['Content-Type'] = res.headersOut['Content-Type'] || 'application/json';
-        r.return(res.status, res.responseBuffer ? res.responseBuffer : '');
-    });
+    // 2xx so auth_request passes; the main location streams the response.
+    r.return(200);
 }
 
 export default { handle };

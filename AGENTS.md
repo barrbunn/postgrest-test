@@ -44,6 +44,32 @@ can run a live-edited pgrmapper for debugging (legacy HS256 auth).
   RSA keypair, the gateway JWT signing keypair, `idp-config.yaml` and the
   PostgREST JWK set (`jwt-secrets.json`) into `certs/` (gitignored).
   `provision.sh` regenerates them when missing.
+- Wharf (observability TUI) is run manually, from an interactive
+  `podman machine ssh` shell:
+
+  ```sh
+  podman machine ssh
+  podman run -d --replace --name pgr-test-<NNN>-wharf --security-opt label=disable \
+    -v "$(podman info --format '{{.Host.RemoteSocket.Path}}')":/var/run/docker.sock \
+    -v ~/.config/wharf:/root/.config/wharf -e DOCKER_HOST=unix:///var/run/docker.sock \
+    --entrypoint sleep ghcr.io/idesyatov/wharf:latest infinity
+  podman exec -it pgr-test-<NNN>-wharf wharf
+  ```
+
+## Health checks
+
+There is no heartbeat protocol: the container runtime runs each service's
+HEALTHCHECK and the Docker API exposes the result — that's what Wharf and
+`podman ps` show. Healthchecks are defined for postgres (`pg_isready`),
+gateway (loopback `/healthz`), pgrmapper (mTLS `/health`), idp (discovery
+URL) and driver (PostgREST reachability). PostgREST has none (its scratch
+image has no shell).
+
+The pgrmapper `/health` endpoint is internal-only: the gateway returns 404
+for `/health` and only serves `/healthz` when `Host: 127.0.0.1` (what the
+container healthcheck sends). After editing `nginx/conf.d/*`, reload with
+`podman compose -p <name> exec gateway nginx -s reload` — mounted config
+changes are not picked up by container restarts alone.
 - `nginx/` — `nginx.conf` (main config with the njs module),
   `conf.d/gateway.conf` (Apigee-mimic routing + mTLS backend) and
   `conf.d/apigee.js` (VerifyJWT/GenerateJWT handler).
@@ -66,7 +92,9 @@ can run a live-edited pgrmapper for debugging (legacy HS256 auth).
   generated SQL (`sql/`, versioned in git). `roles_api` also ships idempotent
   seed data under `examples/roles_api/seed/` (`roles.sql`, `users.sql`,
   `applications.sql`, `grants.sql` — run in that order, via
-  `data/access/examples/roles_api/sql.sh "$(cat <file>)"`).
+  `data/access/examples/roles_api/sql.sh "$(cat <file>)"`) plus bulk sets
+  under `seed/bulk/` (`set-1k.sql`, `set-10k.sql`, `set-100k.sql` — 1k/10k/
+  100k users with proportional applications and grants, one set at a time).
 - `data/access/examples/<scenario>/` — host-side access scripts for the
   scenarios: `sql.sh '<SQL>'` runs SQL inside the driver (write path, the
   gateway front is read-only) and `get.sh <path> [query]` GETs through the
@@ -79,8 +107,11 @@ can run a live-edited pgrmapper for debugging (legacy HS256 auth).
 Managed by **uv**. The driver image installs the project editable at build
 time (`uv sync --frozen`), so you edit `src/` locally and run in the driver.
 **Dependency changes require re-provisioning** (runtime has no internet):
-`scripts/provision.sh` rebuilds the driver image. Full usage:
-`docs/pgprovision.md` (provisioning) and `docs/pgjwt.md` (authorization).
+`scripts/provision.sh` rebuilds the driver image. If `uv run` tries to
+re-sync at runtime (build-env cache miss) it fails on the offline network —
+use the installed console scripts directly (`pgprovision`, `pgjwt`, ...).
+Full usage: `docs/pgprovision.md` (provisioning) and `docs/pgjwt.md`
+(authorization).
 
 ### Intended workflow
 

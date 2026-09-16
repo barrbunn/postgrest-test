@@ -96,6 +96,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGREST_URL: "http://postgrest:3000"
       PGRST_JWT_SECRET: ${PGRST_JWT_SECRET}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://postgrest:3000/"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
     depends_on:
       postgres:
         condition: service_healthy
@@ -123,6 +128,14 @@ services:
       PGMAPPER_IDP_AUDIENCE: ${IDP_CLIENT_ID}
     volumes:
       - ./certs:/certs:ro
+    healthcheck:
+      # mTLS probe: the pgrmapper container presents the gateway client cert
+      # to its own TLS endpoint (SAN includes localhost).
+      test: ["CMD", "curl", "-sf", "--cacert", "/certs/ca.crt", "--cert", "/certs/client.crt", "--key", "/certs/client.key", "https://localhost:8443/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
     depends_on:
       driver:
         condition: service_started
@@ -146,6 +159,12 @@ services:
       - "${IDP_PORT}:5151"
     volumes:
       - ./certs/idp-config.yaml:/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5151/realms/${IDP_REALM}/.well-known/openid-configuration')"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
     networks: [internal]
 
   # nginx API gateway: the only host-facing entry point. Everything is routed
@@ -159,6 +178,11 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./certs:/certs:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
     depends_on:
       pgrmapper:
         condition: service_started

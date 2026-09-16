@@ -56,6 +56,13 @@ pgrmapper        # listens on 0.0.0.0:8000 (PGREMAPPER_PORT) inside the driver
 | IdP JWKS URL (embedded user JWT) | *(unset)* | `PGMAPPER_IDP_JWKS_URL` |
 | expected user-JWT audience | `myclient` | `PGMAPPER_IDP_AUDIENCE` |
 
+## Health
+
+`GET /health` returns `{"status": "ok"}` and exists for the container
+healthcheck (an mTLS probe from inside the container). It is internal-only:
+the nginx gateway returns 404 for `/health`, so it cannot be reached from
+the host.
+
 ## Identity modes
 
 - **Gateway mode (Apigee mimic)** — when the request carries the

@@ -297,6 +297,16 @@ def table_exists(table: str) -> bool:
             return cur.fetchone() is not None
 
 
+@app.get("/health")
+def health() -> dict:
+    """Internal health endpoint (used by the container healthcheck).
+
+    The gateway explicitly blocks /health, so it is not reachable from the
+    host.
+    """
+    return {"status": "ok"}
+
+
 @app.api_route("/{path:path}", methods=["GET"])
 def catch_all(path: str, request: Request) -> Response:
     """Dynamic GET routing: tables are validated against the live schema, so

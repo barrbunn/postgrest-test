@@ -82,6 +82,28 @@ More background:
 - `docs/infra/apigee-mimic.md` — the full GCP JWT flow and how it is mimicked
 - `docs/infra/pgproxy.md` — why the pgproxy sidecars exist and are vendored
 
+## Observability
+
+Wharf (a k9s-style terminal UI) ships as `ghcr.io/idesyatov/wharf:latest`
+and runs as a container inside the podman machine. Start it from an
+interactive machine shell:
+
+```sh
+podman machine ssh
+# inside the machine (NNN = the current instance number, e.g. 14):
+podman run -d --replace --name pgr-test-NNN-wharf --security-opt label=disable \
+  -v "$(podman info --format '{{.Host.RemoteSocket.Path}}')":/var/run/docker.sock \
+  -v ~/.config/wharf:/root/.config/wharf -e DOCKER_HOST=unix:///var/run/docker.sock \
+  --entrypoint sleep ghcr.io/idesyatov/wharf:latest infinity
+podman exec -it pgr-test-NNN-wharf wharf
+```
+
+It shows every compose project including the `pgr-test-*` stacks — live
+status, CPU/MEM charts, logs, exec, details. Wharf's compose *actions*
+(up/down/build) shell out to a `docker` CLI which exists neither in the
+image nor on this host, so use `scripts/provision.sh` for lifecycle
+operations.
+
 ## Notes and gotchas
 
 - Re-provisioning gives a fresh database; `pgprovision teardown schemas` +

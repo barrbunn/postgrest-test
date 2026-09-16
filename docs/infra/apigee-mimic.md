@@ -91,10 +91,15 @@ GenerateJWT.
 
 - `nginx/nginx.conf`: official config + `load_module ngx_http_js_module`.
 - `nginx/conf.d/gateway.conf`: `js_import apigee`, `js_var $service_jwt`,
-  `js_var $user_role`, `location / { js_content apigee.handle; }` and the
-  internal `/_backend/` mTLS proxy location (sets `Authorization: Bearer
-  $service_jwt` and `X-User-Role: $user_role`).
-- `nginx/conf.d/apigee.js`: verify → claims → sign → subrequest relay.
+  `js_var $user_role`; `location /` uses `auth_request /_apigee_auth` (the
+  internal njs subrequest verifies the user JWT, signs the service JWT and
+  sets the two variables, which auth_request propagates to the main
+  request), then a direct `proxy_pass https://pgrmapper:8443/` with mTLS
+  sets `Authorization: Bearer $service_jwt` and `X-User-Role: $user_role`
+  and **streams the response** (no buffering, so arbitrarily large result
+  sets work — the earlier `js_content` subrequest relay hit
+  `subrequest_output_buffer_size` limits and broke on big tables).
+- `nginx/conf.d/apigee.js`: verify → claims → sign → set variables.
 
 ### pgrmapper
 
