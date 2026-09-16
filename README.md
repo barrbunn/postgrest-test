@@ -52,7 +52,8 @@ Two example scenarios ship under `data/provision/examples/`:
 - `roles_api` — a mock authorization system (`users`, `applications`,
   `roles`, `grants` with real foreign keys) with host-side access scripts in
   `data/access/examples/roles_api/`: `sql.sh '<SQL>'` (mutations in the
-  driver) and `get.sh <path> [query]` (reads through the gateway)
+  driver) and `get.sh <path> [query]` (reads through the gateway; set
+  `PGR_JWT_TOKEN` once to share a token across parallel runs)
 
 ### Get a token and call the API (from the host)
 

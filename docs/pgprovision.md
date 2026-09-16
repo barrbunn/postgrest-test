@@ -69,11 +69,11 @@ ruleset**: `CREATE ... IF NOT EXISTS` + `DELETE FROM` + `INSERT` the yaml
 rows, so re-applying after editing the yaml just works. `teardown
 access-filter` drops the table.
 
-**Hot reload**: pgrmapper reads the access_filter table on every request, so
-editing the yaml + `create access-filter` + `apply access-filter` takes
-effect on the next request — no re-provisioning, no container restart.
-An empty `visible_columns: []` blocks the table for that role (the proxy
-answers 403).
+**Hot reload**: pgrmapper caches the access_filter table locally
+(`PGMAPPER_CACHE_TTL`, default 5s), so editing the yaml + `create
+access-filter` + `apply access-filter` takes effect within a few seconds —
+no re-provisioning, no container restart. An empty `visible_columns: []`
+blocks the table for that role (the proxy answers 403).
 
 Generated SQL is plain `CREATE`/`GRANT` — applying to an existing object
 fails by design. `apply` prints the database error plus a hint and exits 1

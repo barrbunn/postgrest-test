@@ -99,8 +99,10 @@ changes are not picked up by container restarts alone.
   scenarios: `sql.sh '<SQL>'` runs SQL inside the driver (write path, the
   gateway front is read-only) and `get.sh <path> [query]` GETs through the
   gateway with an IdP token. Env: `PGR_TEST_GATEWAY_ADDRESS` (default
-  `http://localhost:$NGINX_PORT`), `PGR_TEST_USER`/`PGR_TEST_PASSWORD`
-  (default alice/alice123), `PGR_TEST_INSTANCE` (default `.instance`).
+  `http://localhost:$NGINX_PORT`), `PGR_JWT_TOKEN` (reuse a token instead of
+  fetching one — set it once for parallel runs), `PGR_TEST_USER`/
+  `PGR_TEST_PASSWORD` (default alice/alice123), `PGR_TEST_INSTANCE`
+  (default `.instance`).
 
 ## Python tooling (pgprovision + pgjwt + pgrmapper)
 
@@ -175,7 +177,10 @@ pgprovision teardown schemas                      # 8. reset the schema without 
   its own container (baked image, `gateway`'s single backend); run a
   live-edited plaintext copy manually in the driver for debugging
   (`pgrmapper`, port 8000). See `docs/pgrmapper.md` and
-  `docs/infra/apigee-mimic.md`.
+  `docs/infra/apigee-mimic.md`. Tuning (env-driven): `PGMAPPER_DB_POOL_MIN/MAX`
+  (psycopg pool, defaults 1/10), `PGMAPPER_JWKS_TTL` (IdP key cache, default
+  60s), `PGMAPPER_CACHE_TTL` (access_filter rules cache, default 5s);
+  authorization decisions themselves are never cached.
 
 All paths/names follow the pattern *sensible default + env override*:
 `PGPROVISION_SCHEMAS_ROOT` (`./data/provision/schemas`),
@@ -247,6 +252,10 @@ are relative to `/app` and the mounts mirror the repo.)
 
 ## Gotchas
 
+- `podman stats --no-stream` (and the first streaming sample) reports the
+  **average CPU since container start** — it stays high after load runs and
+  only a restart resets it. For real-time CPU use the second-and-later
+  streaming samples or `top` inside the container.
 - `PGRST_JWT_SECRET` must be at least 32 characters or postgrest exits.
 - Cannot recreate the `postgrest` container alone: `pgproxy-postgrest` pins
   its network namespace. Always use `provision.sh`.

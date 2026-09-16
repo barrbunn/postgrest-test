@@ -7,7 +7,8 @@
 #   get.sh users
 #
 # Env:
-#   PGR_TEST_GATEWAY_ADDRESS   gateway base URL (default http://localhost:8080)
+#   PGR_TEST_GATEWAY_ADDRESS   gateway base URL (default http://localhost:$NGINX_PORT)
+#   PGR_JWT_TOKEN              user JWT to use (skips fetching one from the IdP)
 #   PGR_TEST_USER              IdP username (default alice, role editor)
 #   PGR_TEST_PASSWORD          IdP password (default alice123)
 #   PGR_TEST_INSTANCE          compose project/instance name (default: .instance)
@@ -38,7 +39,11 @@ GATEWAY="${PGR_TEST_GATEWAY_ADDRESS:-http://localhost:${NGINX_PORT:-8080}}"
 USERNAME="${PGR_TEST_USER:-alice}"
 PASSWORD="${PGR_TEST_PASSWORD:-alice123}"
 
-TOKEN=$("$ROOT/scripts/idp-token.sh" "$USERNAME" "$PASSWORD")
+if [ -n "${PGR_JWT_TOKEN:-}" ]; then
+    TOKEN="$PGR_JWT_TOKEN"
+else
+    TOKEN=$("$ROOT/scripts/idp-token.sh" "$USERNAME" "$PASSWORD")
+fi
 
 URL="$GATEWAY/$PATH_ARG"
 [ -n "$QUERY" ] && URL="$URL?$QUERY"

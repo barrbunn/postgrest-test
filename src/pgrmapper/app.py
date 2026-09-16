@@ -14,18 +14,40 @@ modes are supported:
 """
 
 import os
+import time
 from urllib.parse import parse_qsl, urlencode
 
 import httpx
 import psycopg
 from fastapi import FastAPI, Request, Response
 from jose import JWTError, jwk as jose_jwk, jwt
+from psycopg_pool import ConnectionPool
 
 app = FastAPI(title="pgrmapper", docs_url=None, openapi_url=None, redoc_url=None)
 
 
 class AuthError(Exception):
     pass
+
+
+def _env(name: str, default: str) -> str:
+    return os.environ.get(name, default)
+
+
+def db_pool_min() -> int:
+    return int(_env("PGMAPPER_DB_POOL_MIN", "1"))
+
+
+def db_pool_max() -> int:
+    return int(_env("PGMAPPER_DB_POOL_MAX", "10"))
+
+
+def jwks_ttl() -> float:
+    return float(_env("PGMAPPER_JWKS_TTL", "60"))
+
+
+def filter_cache_ttl() -> float:
+    return float(_env("PGMAPPER_CACHE_TTL", "5"))
 
 
 def _env(name: str, default: str) -> str:
@@ -68,19 +90,56 @@ def _q(ident: str) -> str:
     return '"' + ident.replace('"', '""') + '"'
 
 
+# --- shared, lazily-created resources (thread-safe) ---------------------------
+
+_db_pool: ConnectionPool | None = None
+
+
+def db_conn():
+    """Pooled database connection (psycopg_pool), sized via env vars."""
+    global _db_pool
+    if _db_pool is None:
+        _db_pool = ConnectionPool(
+            db_url(), min_size=db_pool_min(), max_size=db_pool_max(), open=True
+        )
+    return _db_pool.connection()
+
+
+_http: httpx.Client | None = None
+
+
+def http_client() -> httpx.Client:
+    """One shared httpx client for the app lifetime: keepalive connection
+    pooling to the upstream services instead of a fresh client (and fresh
+    TCP/TLS handshake) per request."""
+    global _http
+    if _http is None:
+        _http = httpx.Client(timeout=10.0)
+    return _http
+
+
+_jwks_cache: dict = {"keys": None, "ts": 0.0}
+_filter_cache: dict = {"rules": None, "ts": 0.0}
+
+
 def load_access_filter() -> dict[tuple[str, str], list[str]]:
+    """(role, table) -> visible_columns, cached locally for a short TTL."""
+    now = time.monotonic()
+    if _filter_cache["rules"] is not None and now - _filter_cache["ts"] < filter_cache_ttl():
+        return _filter_cache["rules"]
     result: dict[tuple[str, str], list[str]] = {}
     try:
-        with psycopg.connect(db_url()) as conn:
+        with db_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT to_regclass(%s)", (f"{_q(mapper_schema())}.access_filter",))
-                if cur.fetchone()[0] is None:
-                    return result
-                cur.execute(f"SELECT role, \"table\", visible_columns FROM {_q(mapper_schema())}.access_filter")
-                for role, table, cols in cur.fetchall():
-                    result[(role, table)] = list(cols)
+                if cur.fetchone()[0] is not None:
+                    cur.execute(f"SELECT role, \"table\", visible_columns FROM {_q(mapper_schema())}.access_filter")
+                    for role, table, cols in cur.fetchall():
+                        result[(role, table)] = list(cols)
     except psycopg.Error:
         pass
+    _filter_cache["rules"] = result
+    _filter_cache["ts"] = now
     return result
 
 
@@ -109,20 +168,27 @@ def verify_service_jwt(token: str) -> dict | None:
 
 
 def _fetch_idp_keys() -> list:
+    """IdP public keys, cached locally for PGMAPPER_JWKS_TTL seconds."""
+    now = time.monotonic()
+    if _jwks_cache["keys"] is not None and now - _jwks_cache["ts"] < jwks_ttl():
+        return _jwks_cache["keys"]
     url = idp_jwks_url()
     if not url:
-        return []
-    resp = httpx.get(url, timeout=5.0)
-    resp.raise_for_status()
-    return [jose_jwk.construct(k) for k in resp.json().get("keys", [])]
+        keys = []
+    else:
+        try:
+            resp = http_client().get(url)
+            resp.raise_for_status()
+            keys = [jose_jwk.construct(k) for k in resp.json().get("keys", [])]
+        except (httpx.HTTPError, ValueError):
+            keys = []
+    _jwks_cache["keys"] = keys
+    _jwks_cache["ts"] = now
+    return keys
 
 
 def verify_user_jwt_jwks(token: str) -> dict | None:
-    try:
-        keys = _fetch_idp_keys()
-    except (httpx.HTTPError, ValueError):
-        keys = []
-    for key in keys:
+    for key in _fetch_idp_keys():
         try:
             return jwt.decode(token, key, algorithms=["RS256"], audience=idp_audience())
         except JWTError:
@@ -233,8 +299,7 @@ def _forward(request: Request, path: str, query_override: str | None = None) -> 
         for k, v in request.headers.items()
         if k.lower() in ("authorization", "accept", "content-type")
     }
-    with httpx.Client() as client:
-        upstream_resp = client.get(target, headers=headers)
+    upstream_resp = http_client().get(target, headers=headers)
     content_type = upstream_resp.headers.get("content-type", "application/json")
     return Response(
         content=upstream_resp.content,
@@ -287,7 +352,7 @@ def _root(request: Request) -> Response:
 
 
 def table_exists(table: str) -> bool:
-    with psycopg.connect(db_url()) as conn:
+    with db_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT 1 FROM information_schema.tables"
@@ -295,6 +360,14 @@ def table_exists(table: str) -> bool:
                 (db_schema(), table),
             )
             return cur.fetchone() is not None
+
+
+@app.on_event("shutdown")
+def _close_shared() -> None:
+    if _db_pool is not None:
+        _db_pool.close()
+    if _http is not None:
+        _http.close()
 
 
 @app.get("/health")

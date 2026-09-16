@@ -55,6 +55,30 @@ pgrmapper        # listens on 0.0.0.0:8000 (PGREMAPPER_PORT) inside the driver
 | gateway public key (service JWT, RS256) | *(unset = gateway mode off)* | `PGMAPPER_GATEWAY_JWT_PUBLIC_KEY` |
 | IdP JWKS URL (embedded user JWT) | *(unset)* | `PGMAPPER_IDP_JWKS_URL` |
 | expected user-JWT audience | `myclient` | `PGMAPPER_IDP_AUDIENCE` |
+| DB pool min connections | `1` | `PGMAPPER_DB_POOL_MIN` |
+| DB pool max connections | `10` | `PGMAPPER_DB_POOL_MAX` |
+| IdP JWKS cache TTL (seconds) | `60` | `PGMAPPER_JWKS_TTL` |
+| access_filter rules cache TTL (seconds) | `5` | `PGMAPPER_CACHE_TTL` |
+
+## Caching and security
+
+pgrmapper caches two things locally, both with short TTLs; **authorization
+decisions are never cached**:
+
+- **IdP public keys (JWKS)** for `PGMAPPER_JWKS_TTL` seconds. Only the key
+  material is cached — it is public by definition. Every request still
+  verifies the service JWT (RS256, gateway key) and the embedded user JWT
+  (signature + `exp` + `aud` against the cached keys). The tradeoff: IdP key
+  rotation propagates within the TTL.
+- **access_filter rules** for `PGMAPPER_CACHE_TTL` seconds. This is the
+  policy table (which role may see which columns), not per-user outcomes —
+  the role is extracted from a freshly verified JWT on every request and the
+  projection is computed from the current rules each time. The tradeoff:
+  rule changes propagate within 5 seconds.
+
+Nothing user-specific is cached, so there is no cross-user or cross-request
+leakage; a compromised cache would only reveal the public keys and the
+column-visibility policy.
 
 ## Health
 
