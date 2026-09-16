@@ -162,6 +162,11 @@ from a fresh volume.
 
 ## Environment facts (do not fight these)
 
+- **NEVER use any other git credentials except those local to this repo.**
+  All git operations (clone, push, commit identity, remote auth) must use
+  repo-local configuration/credentials only — never global user credentials
+  or credentials of other local projects.
+
 - **No `docker` CLI.** Use `podman` (6.1, arm64 VM). `podman compose` delegates
   to docker-compose v5.4.0 and works for this stack.
 - Apple Silicon: amd64-only images run under qemu-user emulation where **Go
