@@ -2,8 +2,9 @@
 #
 # This is the tracked reference; scripts/gen-certs.sh renders the actual
 # config into certs/idp-config.yaml by replacing the marker below with the
-# generated IdP private key. Edit users/roles here, then regenerate (or
-# re-provision, which regenerates when certs are missing).
+# generated IdP private key, and overriding realm/client_id/base_url from
+# .env (IDP_REALM, IDP_CLIENT_ID, IDP_PORT). Edit users/roles here, then
+# regenerate (or re-provision, which regenerates when certs are missing).
 #
 # The role names in realm_roles must match the pgprovision roles and the
 # access_filter rules (examples: editor, manager, viewer).

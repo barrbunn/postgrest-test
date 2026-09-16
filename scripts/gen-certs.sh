@@ -42,27 +42,55 @@ openssl rsa -in idp-private.pem -pubout -out idp-public.pem
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out gateway-jwt.key
 openssl rsa -in gateway-jwt.key -pubout -out gateway-jwt-public.pem
 
-# 6. Render the keycloak-mockup config with the IdP private key inlined.
-python3 - "$ROOT/idp/config.example.yaml" idp-private.pem > idp-config.yaml <<'PYEOF'
+# 6. Render the keycloak-mockup config with the IdP private key inlined;
+#    realm, client_id and base_url come from .env (IDP_REALM, IDP_CLIENT_ID,
+#    IDP_PORT).
+set -a
+if [ -f "$ROOT/.env" ]; then
+    . "$ROOT/.env"
+fi
+set +a
+REALM="${IDP_REALM:-myrealm}"
+CLIENT_ID="${IDP_CLIENT_ID:-myclient}"
+IDP_PORT="${IDP_PORT:-5151}"
+python3 - "$ROOT/idp/config.example.yaml" idp-private.pem "$REALM" "$CLIENT_ID" "$IDP_PORT" > idp-config.yaml <<'PYEOF'
 import sys
 
-example_path, key_path = sys.argv[1], sys.argv[2]
+example_path, key_path, realm, client_id, idp_port = sys.argv[1:6]
 with open(example_path) as f:
     content = f.read()
 with open(key_path) as f:
     key = f.read()
 block = "private_key_pem: |\n" + "\n".join("  " + line for line in key.splitlines())
 content = content.replace("# private_key_pem: generated", block)
+for prefix, value in (("realm:", realm), ("client_id:", client_id)):
+    lines = content.splitlines()
+    out = []
+    for line in lines:
+        if line.startswith(prefix):
+            out.append(f"{prefix} {value}")
+        else:
+            out.append(line)
+    content = "\n".join(out)
+content = content.replace("base_url: \"http://localhost:5151\"",
+                          f"base_url: \"http://localhost:{idp_port}\"")
 sys.stdout.write(content)
 PYEOF
 
-# 7. JWK set for PostgREST: verifies both the RS256 service JWTs (gateway
+# 7. Gateway verification settings (issuer/audience expected by njs), from
+#    the same env values.
+python3 - "$REALM" "$CLIENT_ID" "$IDP_PORT" > apigee-config.json <<'PYEOF'
+import json, sys
+
+realm, client_id, idp_port = sys.argv[1:4]
+print(json.dumps({
+    "issuer": f"http://localhost:{idp_port}/realms/{realm}",
+    "audience": client_id,
+}))
+PYEOF
+
+# 8. JWK set for PostgREST: verifies both the RS256 service JWTs (gateway
 #    public key) and the legacy HS256 tokens (PGRST_JWT_SECRET).
-set -a
-if [ -f "$ROOT/.env" ]; then
-    . "$ROOT/.env"
-fi
-set +a
 MOD_HEX=$(openssl rsa -pubin -in gateway-jwt-public.pem -modulus -noout | cut -d= -f2)
 HS_SECRET="${PGRST_JWT_SECRET:-}"
 python3 - "$MOD_HEX" "$HS_SECRET" > jwt-secrets.json <<'PYEOF'

@@ -1,0 +1,16 @@
+grants:
+  - user: anon
+    tables: [users, applications, roles, grants]
+    permissions: [select]
+  - user: editor
+    tables: [users, applications, roles, grants]
+    permissions: [select]
+  - user: manager
+    tables: [users, applications, roles, grants]
+    permissions: [select]
+  - user: viewer
+    tables: [users, applications, roles, grants]
+    permissions: [select]
+  - user: administrator
+    tables: [users, applications, roles, grants]
+    permissions: [select]

@@ -19,6 +19,7 @@ class Column(BaseModel):
     primary_key: bool = False
     not_null: bool = False
     default: SqlLiteral = None
+    references: str | None = Field(None, pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*\.[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
 class Table(BaseModel):

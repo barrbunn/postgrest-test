@@ -1,0 +1,14 @@
+# Database roles for API access; match the IdP users (idp/config.example.yaml).
+roles:
+  - name: editor
+    login: false
+    grant_to: [authenticator]
+  - name: manager
+    login: false
+    grant_to: [authenticator]
+  - name: viewer
+    login: false
+    grant_to: [authenticator]
+  - name: administrator
+    login: false
+    grant_to: [authenticator]

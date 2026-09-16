@@ -46,6 +46,7 @@ def render_table(name: str) -> None:
             owner = cur.fetchone()[0]
         live = db.db_tables(conn)
         live_grants = db.db_grants(conn)
+        live_fks = db.db_foreign_keys(conn)
     if name not in live:
         typer.echo(f"error: table {name} not found in schema {config.db_schema()}", err=True)
         raise typer.Exit(code=1)
@@ -62,6 +63,9 @@ def render_table(name: str) -> None:
             flags.append("NOT NULL")
         if c["default"] is not None:
             flags.append(f"DEFAULT {c['default']}")
+        ref = live_fks.get(name, {}).get(c["name"])
+        if ref:
+            flags.append(f"REFERENCES {ref[0]}({ref[1]})")
         suffix = f"  {', '.join(flags)}" if flags else ""
         typer.echo(f"  {c['name'].ljust(width)}{c['type']}{suffix}")
 

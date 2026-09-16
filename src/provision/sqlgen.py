@@ -41,6 +41,9 @@ def tables(doc: TablesDoc) -> str:
                 line += " NOT NULL"
             if col.default is not None:
                 line += f" DEFAULT {_literal(col.default)}"
+            if col.references:
+                ref_table, ref_col = col.references.rsplit(".", 1)
+                line += f" REFERENCES {_escape_ident(ref_table)} ({_escape_ident(ref_col)})"
             col_lines.append(line)
             if col.primary_key:
                 pk_columns.append(_escape_ident(col.name))
@@ -159,10 +162,11 @@ def access_filter(doc: AccessFilterDoc) -> str:
     ]
     for row in doc.access_filter:
         cols = ", ".join("'" + c.replace(chr(39), chr(39) * 2) + "'" for c in row.visible_columns)
+        array = f"ARRAY[{cols}]::text[]" if cols else "ARRAY[]::text[]"
         out.append(
             f"INSERT INTO {schema}.access_filter (role, \"table\", visible_columns)"
             f" VALUES ('{row.role.replace(chr(39), chr(39) * 2)}',"
-            f" '{row.table.replace(chr(39), chr(39) * 2)}', ARRAY[{cols}]);"
+            f" '{row.table.replace(chr(39), chr(39) * 2)}', {array});"
         )
     return "\n".join(out) + "\n"
 

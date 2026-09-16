@@ -30,13 +30,16 @@ def _normalize_default(d: str | None) -> str | None:
     return d
 
 
-def check_tables(doc: models.TablesDoc, live: dict[str, list[dict]]) -> list[str]:
+def check_tables(
+    doc: models.TablesDoc, live: dict[str, list[dict]], live_fks: dict[str, dict[str, tuple[str, str]]]
+) -> list[str]:
     problems: list[str] = []
     for table in doc.tables:
         if table.name not in live:
             problems.append(f"table {table.name}: MISSING in database")
             continue
         db_cols = {c["name"]: c for c in live[table.name]}
+        db_fks = live_fks.get(table.name, {})
         table_ok = True
         for col in table.columns:
             prefix = f"table {table.name}, column {col.name}:"
@@ -58,9 +61,17 @@ def check_tables(doc: models.TablesDoc, live: dict[str, list[dict]]) -> list[str
             if actual["pk"] != col.primary_key:
                 problems.append(f"{prefix} primary key mismatch: yaml primary_key={col.primary_key}")
                 table_ok = False
+            expected_ref = tuple(col.references.rsplit(".", 1)) if col.references else None
+            if db_fks.get(col.name) != expected_ref:
+                problems.append(f"{prefix} foreign key mismatch: yaml {col.references} vs database {db_fks.get(col.name)}")
+                table_ok = False
         for db_col in db_cols.values():
             if not any(c.name == db_col["name"] for c in table.columns):
                 problems.append(f"table {table.name}, column {db_col['name']}: UNMANAGED (only in database)")
+                table_ok = False
+        for db_col in db_fks:
+            if not any(c.name == db_col and c.references for c in table.columns):
+                problems.append(f"table {table.name}, column {db_col}: UNMANAGED foreign key (only in database)")
                 table_ok = False
         if table_ok:
             typer.echo(f"table {table.name}: OK")
@@ -163,9 +174,10 @@ def check_schemas() -> bool:
         live_functions = db.db_functions(conn)
         live_settings = db.db_role_settings(conn, postgrest_doc.postgrest.role)
         live_access_filter = db.db_access_filter(conn)
+        live_fks = db.db_foreign_keys(conn)
 
     problems = []
-    problems += check_tables(tables_doc, live_tables)
+    problems += check_tables(tables_doc, live_tables, live_fks)
     problems += check_users_roles(users_doc, roles_doc, live_roles)
     problems += check_grants(grants_doc, live_grants)
     problems += check_functions(functions_doc, live_functions)
@@ -189,7 +201,12 @@ def check_table(table_name: str) -> bool:
         return False
     with db.connect() as conn:
         live = db.db_tables(conn)
-    problems = check_tables(models.TablesDoc(tables=[table]), {table_name: live[table_name]} if table_name in live else {})
+        live_fks = db.db_foreign_keys(conn)
+    problems = check_tables(
+        models.TablesDoc(tables=[table]),
+        {table_name: live[table_name]} if table_name in live else {},
+        live_fks,
+    )
     if problems:
         for p in problems:
             typer.echo(f"  {p}", err=True)

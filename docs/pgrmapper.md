@@ -36,7 +36,8 @@ pgrmapper        # listens on 0.0.0.0:8000 (PGREMAPPER_PORT) inside the driver
 4. **Rewrites `?select=`** to the intersection of the requested columns and
    the visible columns: no `select` or `select=*` → the visible list; hidden
    columns are stripped; embedded resources pass through; an empty
-   intersection → `403`.
+   intersection → `403`. An empty `visible_columns` list blocks the table
+   entirely (`403`).
 5. **Forwards the request to PostgREST** with the Authorization header
    intact (PostgREST still enforces role membership, grants and RLS) and
    returns the response as-is.

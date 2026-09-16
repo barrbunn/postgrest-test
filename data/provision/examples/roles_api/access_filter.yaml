@@ -1,0 +1,60 @@
+# Column-visibility rules for the pgrmapper filtering proxy.
+# Roles without a rule on a table see everything; an empty visible_columns
+# list blocks the table entirely (the proxy returns 403).
+
+# viewer: minimal read-only view, no grants at all
+access_filter:
+  - role: viewer
+    table: users
+    visible_columns: [user_id, user_name]
+  - role: viewer
+    table: applications
+    visible_columns: [application_id, application_name]
+  - role: viewer
+    table: roles
+    visible_columns: [role_id, role_name]
+  - role: viewer
+    table: grants
+    visible_columns: []
+
+# editor: everything except sensitive/audit fields
+  - role: editor
+    table: users
+    visible_columns: [user_id, user_name, user_email]
+  - role: editor
+    table: applications
+    visible_columns: [application_id, application_name, description]
+  - role: editor
+    table: roles
+    visible_columns: [role_id, role_name, description]
+  - role: editor
+    table: grants
+    visible_columns: [grant_id, user_id, application_id, role_id, granted_at]
+
+# manager: full visibility
+  - role: manager
+    table: users
+    visible_columns: [user_id, user_name, user_email, status]
+  - role: manager
+    table: applications
+    visible_columns: [application_id, application_name, description, owner_team]
+  - role: manager
+    table: roles
+    visible_columns: [role_id, role_name, description]
+  - role: manager
+    table: grants
+    visible_columns: [grant_id, user_id, application_id, role_id, granted_by, granted_at]
+
+# administrator: full visibility
+  - role: administrator
+    table: users
+    visible_columns: [user_id, user_name, user_email, status]
+  - role: administrator
+    table: applications
+    visible_columns: [application_id, application_name, description, owner_team]
+  - role: administrator
+    table: roles
+    visible_columns: [role_id, role_name, description]
+  - role: administrator
+    table: grants
+    visible_columns: [grant_id, user_id, application_id, role_id, granted_by, granted_at]

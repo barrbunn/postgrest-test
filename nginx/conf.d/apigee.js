@@ -14,8 +14,9 @@ import fs from 'fs';
 // node-style 'crypto' module must NOT be imported, it shadows the global.
 const subtle = globalThis.crypto.subtle;
 
-const EXPECTED_ISS = 'http://localhost:5151/realms/myrealm';
-const EXPECTED_AUD = 'myclient';
+const APIGEE_CONFIG = JSON.parse(fs.readFileSync('/certs/apigee-config.json', 'utf8'));
+const EXPECTED_ISS = APIGEE_CONFIG.issuer;
+const EXPECTED_AUD = APIGEE_CONFIG.audience;
 const SERVICE_TTL = 60;
 
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';

@@ -61,6 +61,26 @@ def db_role_settings(conn, role: str) -> set[str]:
         return {row[0] for row in cur.fetchall()}
 
 
+def db_foreign_keys(conn) -> dict[str, dict[str, tuple[str, str]]]:
+    """table -> {column -> (referenced_table, referenced_column)}"""
+    schema = config.db_schema()
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT tc.table_name, kcu.column_name, ccu.table_name, ccu.column_name"
+            " FROM information_schema.table_constraints tc"
+            " JOIN information_schema.key_column_usage kcu"
+            "   ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema"
+            " JOIN information_schema.constraint_column_usage ccu"
+            "   ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema"
+            " WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = %s",
+            (schema,),
+        )
+        result: dict[str, dict[str, tuple[str, str]]] = {}
+        for table, column, ref_table, ref_col in cur.fetchall():
+            result.setdefault(table, {})[column] = (ref_table, ref_col)
+        return result
+
+
 def db_access_filter(conn) -> dict[tuple[str, str], list[str]]:
     """(role, table) -> visible_columns, from the pgrmapper access_filter table."""
     schema = config.mapper_schema().replace('"', '""')

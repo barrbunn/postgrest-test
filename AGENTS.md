@@ -62,8 +62,17 @@ can run a live-edited pgrmapper for debugging (legacy HS256 auth).
   packages: `src/provision`, `src/pgjwt`, `src/pgmkcurl` and `src/pgrmapper`
   (see below).
 - `data/provision/` — yaml templates (default working dir `schemas/`,
-  example scenarios under `examples/<scenario>/`) and generated SQL
-  (`sql/`, versioned in git).
+  example scenarios under `examples/<scenario>/`: `todos`, `roles_api`) and
+  generated SQL (`sql/`, versioned in git). `roles_api` also ships idempotent
+  seed data under `examples/roles_api/seed/` (`roles.sql`, `users.sql`,
+  `applications.sql`, `grants.sql` — run in that order, via
+  `data/access/examples/roles_api/sql.sh "$(cat <file>)"`).
+- `data/access/examples/<scenario>/` — host-side access scripts for the
+  scenarios: `sql.sh '<SQL>'` runs SQL inside the driver (write path, the
+  gateway front is read-only) and `get.sh <path> [query]` GETs through the
+  gateway with an IdP token. Env: `PGR_TEST_GATEWAY_ADDRESS` (default
+  `http://localhost:$NGINX_PORT`), `PGR_TEST_USER`/`PGR_TEST_PASSWORD`
+  (default alice/alice123), `PGR_TEST_INSTANCE` (default `.instance`).
 
 ## Python tooling (pgprovision + pgjwt + pgrmapper)
 
@@ -148,7 +157,9 @@ with pgrmapper).
 
 Yaml shape (see `data/provision/examples/<scenario>/*.yaml` for examples):
 tables
-(`name`, `columns` with `name`/`type`/`primary_key`/`not_null`/`default`),
+(`name`, `columns` with `name`/`type`/`primary_key`/`not_null`/`default`/
+`references` — `references: table.column` generates a foreign key, required
+for PostgREST embeds),
 users (`name`, `password`, `login`, `grant_to`), roles (`name`,
 `login: false`, `grant_to`), grants
 (`user`, `tables`, `permissions`), functions (`name`, `returns`, `language`,

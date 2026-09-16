@@ -119,7 +119,8 @@ services:
       PGMAPPER_TLS_KEY: /certs/server.key
       PGMAPPER_TLS_CA: /certs/ca.crt
       PGMAPPER_GATEWAY_JWT_PUBLIC_KEY: /certs/gateway-jwt-public.pem
-      PGMAPPER_IDP_JWKS_URL: "http://idp:5151/realms/myrealm/protocol/openid-connect/certs"
+      PGMAPPER_IDP_JWKS_URL: "http://idp:5151/realms/${IDP_REALM}/protocol/openid-connect/certs"
+      PGMAPPER_IDP_AUDIENCE: ${IDP_CLIENT_ID}
     volumes:
       - ./certs:/certs:ro
     depends_on:

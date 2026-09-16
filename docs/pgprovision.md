@@ -69,6 +69,12 @@ ruleset**: `CREATE ... IF NOT EXISTS` + `DELETE FROM` + `INSERT` the yaml
 rows, so re-applying after editing the yaml just works. `teardown
 access-filter` drops the table.
 
+**Hot reload**: pgrmapper reads the access_filter table on every request, so
+editing the yaml + `create access-filter` + `apply access-filter` takes
+effect on the next request — no re-provisioning, no container restart.
+An empty `visible_columns: []` blocks the table for that role (the proxy
+answers 403).
+
 Generated SQL is plain `CREATE`/`GRANT` — applying to an existing object
 fails by design. `apply` prints the database error plus a hint and exits 1
 (no traceback). Use `pgprovision teardown schemas` to clean up first, or
@@ -265,10 +271,21 @@ tables:
       - name: done
         type: boolean
         default: false
+  - name: grants
+    columns:
+      - name: grant_id
+        type: integer
+        primary_key: true
+      - name: user_id
+        type: integer
+        not_null: true
+        references: users.user_id
 ```
 
 `type` is any SQL type string. `default` accepts strings, numbers, booleans
-and `null`.
+and `null`. `references: <table>.<column>` generates a `FOREIGN KEY`
+constraint — required for PostgREST to expose embedded resources (see
+`data/provision/examples/roles_api` for a multi-table example).
 
 ### `users.yaml`
 

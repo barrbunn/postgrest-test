@@ -255,6 +255,12 @@ def make_handler(table: str):
             )
         visible = load_access_filter().get((role, table))
         if visible is not None:
+            if not visible:
+                return Response(
+                    content=f'{{"error":"role {role} has no visible columns on {table}"}}',
+                    status_code=403,
+                    headers={"content-type": "application/json"},
+                )
             new_query, blocked = transform_query(request.url.query or "", visible)
             if blocked:
                 return Response(

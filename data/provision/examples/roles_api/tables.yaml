@@ -1,0 +1,58 @@
+tables:
+  - name: users
+    columns:
+      - name: user_id
+        type: integer
+        primary_key: true
+      - name: user_name
+        type: text
+        not_null: true
+      - name: user_email
+        type: text
+        not_null: true
+      - name: status
+        type: text
+        default: active
+  - name: applications
+    columns:
+      - name: application_id
+        type: integer
+        primary_key: true
+      - name: application_name
+        type: text
+        not_null: true
+      - name: description
+        type: text
+      - name: owner_team
+        type: text
+  - name: roles
+    columns:
+      - name: role_id
+        type: integer
+        primary_key: true
+      - name: role_name
+        type: text
+        not_null: true
+      - name: description
+        type: text
+  - name: grants
+    columns:
+      - name: grant_id
+        type: integer
+        primary_key: true
+      - name: user_id
+        type: integer
+        not_null: true
+        references: users.user_id
+      - name: application_id
+        type: integer
+        not_null: true
+        references: applications.application_id
+      - name: role_id
+        type: integer
+        not_null: true
+        references: roles.role_id
+      - name: granted_by
+        type: text
+      - name: granted_at
+        type: date

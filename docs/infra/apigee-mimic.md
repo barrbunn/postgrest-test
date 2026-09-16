@@ -80,8 +80,12 @@ GenerateJWT.
 - The mockup does **not** support the password grant; `scripts/idp-token.sh`
   drives the authorization-code flow entirely with curl (form login →
   `?code=` redirect → token exchange).
-- Issuer is `http://localhost:5151/realms/myrealm` (matching the host-facing
-  URL); the njs handler checks `iss` and `aud` accordingly.
+- Realm, client_id and issuer are driven by `.env` (`IDP_REALM`,
+  `IDP_CLIENT_ID`, `IDP_PORT`): `gen-certs.sh` renders them into
+  `certs/idp-config.yaml` (IdP) and `certs/apigee-config.json` (issuer/aud
+  expected by the njs handler); pgrmapper gets them via compose env.
+  Changing them requires cert regeneration
+  (`rm certs/ca.crt && ./scripts/provision.sh`).
 
 ### gateway (nginx + njs)
 
@@ -114,6 +118,6 @@ GenerateJWT.
 
 ```sh
 ALICE=$(scripts/idp-token.sh alice alice123)          # user JWT from the IdP
-curl -H "Authorization: Bearer $ALICE" http://localhost:8080/todos
-curl -H "Authorization: Bearer $ALICE" "http://localhost:8080/todos?select=*"
+curl -H "Authorization: Bearer $ALICE" http://localhost:$NGINX_PORT/todos
+curl -H "Authorization: Bearer $ALICE" "http://localhost:$NGINX_PORT/todos?select=*"
 ```

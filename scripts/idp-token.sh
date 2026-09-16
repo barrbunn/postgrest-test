@@ -17,10 +17,10 @@ set +a
 
 USERNAME="${1:?usage: idp-token.sh <username> <password>}"
 PASSWORD="${2:?usage: idp-token.sh <username> <password>}"
-IDP_URL="${IDP_URL:-http://localhost:5151}"
+IDP_URL="${IDP_URL:-http://localhost:${IDP_PORT:-5151}}"
 REALM="${IDP_REALM:-myrealm}"
 CLIENT_ID="${IDP_CLIENT_ID:-myclient}"
-REDIRECT_URI="http://localhost:5151/cb"
+REDIRECT_URI="$IDP_URL/cb"
 
 # 1. Login (form POST) -> 302 with ?code=...
 LOCATION=$(curl -sS -D - -o /dev/null -X POST \

@@ -46,8 +46,13 @@ export PGPROVISION_AUTORELOAD_SCHEMAS=true
 pgprovision create schemas && pgprovision apply schemas
 ```
 
-This creates the `todos` table, the `editor`/`manager`/`viewer` roles,
-grants, a pre-request function and the pgrmapper column-visibility rules.
+Two example scenarios ship under `data/provision/examples/`:
+
+- `todos` — a single table with roles, a pre-request hook and column filters
+- `roles_api` — a mock authorization system (`users`, `applications`,
+  `roles`, `grants` with real foreign keys) with host-side access scripts in
+  `data/access/examples/roles_api/`: `sql.sh '<SQL>'` (mutations in the
+  driver) and `get.sh <path> [query]` (reads through the gateway)
 
 ### Get a token and call the API (from the host)
 
