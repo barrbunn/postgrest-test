@@ -1,0 +1,11 @@
+# editor: no status; manager: everything; viewer: table blocked
+access_filter:
+  - role: editor
+    table: users
+    visible_columns: [user_id, user_name]
+  - role: manager
+    table: users
+    visible_columns: [user_id, user_name, status]
+  - role: viewer
+    table: users
+    visible_columns: []

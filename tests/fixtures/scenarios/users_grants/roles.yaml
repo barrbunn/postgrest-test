@@ -1,0 +1,10 @@
+roles:
+  - name: editor
+    login: false
+    grant_to: [authenticator]
+  - name: manager
+    login: false
+    grant_to: [authenticator]
+  - name: viewer
+    login: false
+    grant_to: [authenticator]

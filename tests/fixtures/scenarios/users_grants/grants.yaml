@@ -1,0 +1,10 @@
+grants:
+  - user: editor
+    tables: [users]
+    permissions: [select]
+  - user: manager
+    tables: [users]
+    permissions: [select]
+  - user: viewer
+    tables: [users]
+    permissions: [select]
