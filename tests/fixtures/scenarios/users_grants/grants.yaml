@@ -1,10 +1,10 @@
 grants:
   - user: editor
-    tables: [users]
+    tables: [users, grants]
     permissions: [select]
   - user: manager
-    tables: [users]
+    tables: [users, grants]
     permissions: [select]
   - user: viewer
-    tables: [users]
+    tables: [users, grants]
     permissions: [select]

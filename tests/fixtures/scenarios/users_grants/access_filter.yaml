@@ -1,11 +1,20 @@
-# editor: no status; manager: everything; viewer: table blocked
+# editor: no status/profile, no granted_by; manager: everything; viewer: blocked
 access_filter:
   - role: editor
     table: users
     visible_columns: [user_id, user_name]
   - role: manager
     table: users
-    visible_columns: [user_id, user_name, status]
+    visible_columns: [user_id, user_name, status, profile]
   - role: viewer
     table: users
+    visible_columns: []
+  - role: editor
+    table: grants
+    visible_columns: [grant_id, user_id, granted_at]
+  - role: manager
+    table: grants
+    visible_columns: [grant_id, user_id, granted_at, granted_by]
+  - role: viewer
+    table: grants
     visible_columns: []

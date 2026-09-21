@@ -67,10 +67,15 @@ def create_app(*, idp_public_pem: str, gateway_private_pem: str,
         target = f"{pgrmapper_url.rstrip('/')}/{path}"
         if request.url.query:
             target += f"?{request.url.query}"
-        upstream = await client.get(
-            target,
-            headers={"Authorization": f"Bearer {service}", "X-User-Role": role},
-        )
+        forward_headers = {
+            "Authorization": f"Bearer {service}",
+            "X-User-Role": role,
+        }
+        for name in ("accept", "content-type"):
+            value = request.headers.get(name)
+            if value:
+                forward_headers[name] = value
+        upstream = await client.get(target, headers=forward_headers)
         return Response(
             content=upstream.content,
             status_code=upstream.status_code,

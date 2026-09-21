@@ -10,3 +10,18 @@ tables:
       - name: status
         type: text
         default: active
+      - name: profile
+        type: jsonb
+  - name: grants
+    columns:
+      - name: grant_id
+        type: integer
+        primary_key: true
+      - name: user_id
+        type: integer
+        not_null: true
+        references: users.user_id
+      - name: granted_at
+        type: date
+      - name: granted_by
+        type: text

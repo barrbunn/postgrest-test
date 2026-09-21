@@ -25,7 +25,8 @@ def _perform(context, method: str, path: str, query: str = "",
              headers: dict | None = None, through_gateway: bool = False) -> None:
     base = ensure_gateway(context).url if through_gateway else ensure_mapper(context).url
     url = f"{base}{path}" + (f"?{query}" if query else "")
-    context.response = httpx.request(method, url, headers=headers or {}, timeout=10)
+    merged = {"Accept": "application/json", **(headers or {})}
+    context.response = httpx.request(method, url, headers=merged, timeout=10)
 
 
 def _hs256(role: str, expires_in: int = 300) -> str:
@@ -210,6 +211,31 @@ def step_response_json(context, body):
     assert context.response.json() == json.loads(body)
 
 
+@then('the response content type is "{content_type}"')
+def step_response_content_type(context, content_type):
+    actual = context.response.headers.get("content-type", "")
+    assert actual.startswith(content_type), f"content-type was {actual!r}"
+
+
+def _last_entry(context) -> dict:
+    spy = postgrest_spy(context)
+    assert spy, "postgrest received no requests"
+    return spy[0]
+
+
+@then('the last postgrest request has header "{name}" equal to "{value}"')
+def step_spy_header_equal(context, name, value):
+    headers = {key.lower(): val for key, val in _last_entry(context)["headers"].items()}
+    assert headers.get(name.lower()) == value, f"headers were: {headers}"
+
+
+@then('the last postgrest request has header "{name}" starting with "{prefix}"')
+def step_spy_header_prefix(context, name, prefix):
+    headers = {key.lower(): val for key, val in _last_entry(context)["headers"].items()}
+    actual = headers.get(name.lower(), "")
+    assert actual.startswith(prefix), f"header {name} was {actual!r}"
+
+
 @then('postgrest received no requests')
 def step_no_requests(context):
     spy = postgrest_spy(context)
@@ -224,9 +250,7 @@ def step_request_count(context, count):
 
 @then('postgrest received the last request "{spec}"')
 def step_last_request(context, spec):
-    spy = postgrest_spy(context)
-    assert spy, "postgrest received no requests"
-    entry = spy[0]
+    entry = _last_entry(context)
     actual = canonical_key(entry["method"], entry["path"], entry["query"])
     expected = key_from_spec(spec)
     assert actual == expected, f"expected {expected!r}, got {actual!r}"

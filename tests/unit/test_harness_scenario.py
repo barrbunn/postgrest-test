@@ -35,7 +35,7 @@ def test_render_suffixes_roles_and_references(tmp_path: Path):
     assert {entry["role"] for entry in filter_doc["access_filter"]} == set(roles.values())
 
     tables_doc = yaml.safe_load((dest / "tables.yaml").read_text())
-    assert [table["name"] for table in tables_doc["tables"]] == ["users"]
+    assert [table["name"] for table in tables_doc["tables"]] == ["users", "grants"]
 
 
 def test_render_fills_missing_domain_files(tmp_path: Path):
