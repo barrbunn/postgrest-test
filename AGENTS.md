@@ -86,7 +86,16 @@ changes are not picked up by container restarts alone.
   in the container.
 - `pyproject.toml` / `uv.lock` — uv project at the repo root with four
   packages: `src/provision`, `src/pgjwt`, `src/pgmkcurl` and `src/pgrmapper`
-  (see below).
+  (see below). Test-only dependencies live in the `test` dependency group
+  (not installed into the driver image).
+- `tests/` + `docs/testing/` — host-side pytest + Behave integration suite:
+  pgrmapper routing, identity chain and query policy against mock
+  IdP/gateway/PostgREST servers, backed by a disposable postgres container.
+  See `docs/testing/README.md`; design in `docs/testing/plan.md`.
+- `scripts/test.sh` — runs the host test suite (`pytest tests/unit`, then
+  `behave tests/features`); requires `uv` and a running podman machine. It
+  starts its own postgres and mocks and never touches a provisioned
+  instance.
 - `data/provision/` — yaml templates (default working dir `schemas/`,
   example scenarios under `examples/<scenario>/`: `todos`, `roles_api`) and
   generated SQL (`sql/`, versioned in git). `roles_api` also ships idempotent
@@ -250,6 +259,9 @@ are relative to `/app` and the mounts mirror the repo.)
 - Tests run from the `driver`: `curl http://postgrest:3000` (through
   pgproxy), direct DB at `postgres:5432`, proxied DB at `127.0.0.1:5432`
   (`DATABASE_URL`).
+- The automated suite runs on the host instead: `scripts/test.sh` (see
+  `docs/testing/README.md`). It is self-contained and does not require a
+  provisioned instance.
 - **Only the nginx gateway (`NGINX_PORT`) and the idp (`IDP_PORT`) publish
   host ports.** Everything else (postgres, postgrest, pgrmapper) is reachable
   only from containers on the internal network. The gateway routes to
