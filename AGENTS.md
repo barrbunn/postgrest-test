@@ -168,9 +168,12 @@ pgprovision teardown schemas                      # 8. reset the schema without 
   pgproxy).
 - `pgrmapper` — read-only FastAPI filtering proxy in front of PostgREST:
   validates GET routes against the live DB schema per request, extracts the
-  role, looks up `(role, table)` in the pgrmapper `access_filter` table and
-  rewrites `?select=` to the visible columns, then forwards the request to
-  PostgREST. Two identity modes: **gateway mode** (Apigee mimic — verifies
+  role, looks up `(role, table)` in the pgrmapper `access_filter` table,
+  rewrites `?select=` to the visible columns and applies
+  `PGMAPPER_QUERY_POLICY` (`reject`/`enforce`/`allow`, default `reject`) to
+  all other parameters (filters, logic trees, `order`, embed references), so
+  hidden columns can't be used as predicates or sort keys, then forwards the
+  request to PostgREST. Two identity modes: **gateway mode** (Apigee mimic — verifies
   the RS256 service JWT from nginx and the embedded user JWT against the IdP
   JWKS, role from `X-User-Role`) and **legacy mode** (HS256
   `PGRST_JWT_SECRET`, role from the JWT; anonymous when no token). Runs in
@@ -179,8 +182,10 @@ pgprovision teardown schemas                      # 8. reset the schema without 
   (`pgrmapper`, port 8000). See `docs/pgrmapper.md` and
   `docs/infra/apigee-mimic.md`. Tuning (env-driven): `PGMAPPER_DB_POOL_MIN/MAX`
   (psycopg pool, defaults 1/10), `PGMAPPER_JWKS_TTL` (IdP key cache, default
-  60s), `PGMAPPER_CACHE_TTL` (access_filter rules cache, default 5s);
-  authorization decisions themselves are never cached.
+  60s), `PGMAPPER_CACHE_TTL` (access_filter rules cache, default 5s),
+  `PGMAPPER_QUERY_POLICY` (hidden-column references in query parameters:
+  `reject`/`enforce`/`allow`, default `reject`); authorization decisions
+  themselves are never cached.
 
 All paths/names follow the pattern *sensible default + env override*:
 `PGPROVISION_SCHEMAS_ROOT` (`./data/provision/schemas`),

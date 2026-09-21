@@ -35,12 +35,38 @@ pgrmapper        # listens on 0.0.0.0:8000 (PGREMAPPER_PORT) inside the driver
    forwarded unfiltered.
 4. **Rewrites `?select=`** to the intersection of the requested columns and
    the visible columns: no `select` or `select=*` → the visible list; hidden
-   columns are stripped; embedded resources pass through; an empty
-   intersection → `403`. An empty `visible_columns` list blocks the table
-   entirely (`403`).
-5. **Forwards the request to PostgREST** with the Authorization header
+   columns are stripped; embedded resources are checked against their own
+   `(role, table)` rule; an empty intersection → `403`. An empty
+   `visible_columns` list blocks the table entirely (`403`).
+5. **Applies the query policy** (`PGMAPPER_QUERY_POLICY`) to every other
+   parameter — column filters, `and`/`or`/`not.*` trees, `order`, and
+   embedded-resource references (`users.status=eq.x`,
+   `select=...,users(*)`) — so hidden columns cannot be used as predicates,
+   sort keys or embed projections. See below.
+6. **Forwards the request to PostgREST** with the Authorization header
    intact (PostgREST still enforces role membership, grants and RLS) and
    returns the response as-is.
+
+## Query policy
+
+Only `select=` is always rewritten. Everything else is handled according to
+`PGMAPPER_QUERY_POLICY`:
+
+| Value | Behavior |
+|---|---|
+| `reject` (default) | any reference to a column outside the visible list → `403` `{"error":"column <table>.<col> is not visible for role <role>"}`; nothing is forwarded |
+| `enforce` | offending filters, order terms, tree conditions and embedded columns are stripped; an embed left with no visible columns is dropped; a dropped filter means the rows are no longer restricted by it |
+| `allow` | parameters are forwarded verbatim (legacy behavior); only the `select=` projection is enforced |
+
+Covered references: plain/JSON-path filters (`status=eq.x`,
+`data->>key=eq.x`), operator modifiers (`like(any)`), negations
+(`status=not.eq.x`), logic trees (`or=(...)`, `not.and=(...)`), `order`
+terms, embed-qualified parameters (`users.status`, `users.order`,
+`<alias>.status` once the alias appears in `select`), and columns inside
+embedded selects (recursively, using the embedded table's own rule).
+Wildcards (`select=*`, `users(*)`) always expand to the visible columns.
+A reference to a column that does not exist at all is answered like a
+hidden one, so `reject` does not reveal whether the column exists.
 
 ## Configuration (defaults + environment overrides)
 
@@ -51,6 +77,7 @@ pgrmapper        # listens on 0.0.0.0:8000 (PGREMAPPER_PORT) inside the driver
 | database URL | `$DATABASE_URL` or built from `POSTGRES_*` | `PGMAPPER_DB_URL` |
 | exposed schema (routes) | `public` | `PGMAPPER_DB_SCHEMA` |
 | access_filter schema | `pgrmapper` | `PGMAPPER_SCHEMA` |
+| query policy (`allow`/`enforce`/`reject`) | `reject` | `PGMAPPER_QUERY_POLICY` |
 | anonymous role | `anon` | `PGMAPPER_ANON_ROLE` |
 | gateway public key (service JWT, RS256) | *(unset = gateway mode off)* | `PGMAPPER_GATEWAY_JWT_PUBLIC_KEY` |
 | IdP JWKS URL (embedded user JWT) | *(unset)* | `PGMAPPER_IDP_JWKS_URL` |

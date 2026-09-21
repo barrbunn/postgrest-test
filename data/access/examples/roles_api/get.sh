@@ -48,5 +48,15 @@ fi
 URL="$GATEWAY/$PATH_ARG"
 [ -n "$QUERY" ] && URL="$URL?$QUERY"
 
-curl -sS -H "Authorization: Bearer $TOKEN" "$URL" \
+RESPONSE=$(curl -sS -w ' %{http_code}' -H "Authorization: Bearer $TOKEN" "$URL") || exit 1
+STATUS="${RESPONSE##* }"
+BODY="${RESPONSE% *}"
+
+if [ "$STATUS" -ge 400 ] 2>/dev/null; then
+    echo "error: HTTP $STATUS from $URL" >&2
+    echo "$BODY" >&2
+    exit 1
+fi
+
+printf '%s' "$BODY" \
     | python3 -c 'import json, sys; print(json.dumps(json.load(sys.stdin), indent=2))'

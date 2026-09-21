@@ -68,8 +68,15 @@ up_new() {
         echo ">>> .env not found, copying .env.example"
         cp .env.example .env
     }
-    if [ ! -f certs/ca.crt ]; then
-        echo ">>> test certificates missing, generating them"
+    local missing=
+    for f in ca.crt server.crt server.key client.crt client.key \
+             idp-public.pem gateway-jwt.key gateway-jwt-public.pem \
+             idp-config.yaml jwt-secrets.json apigee-config.json; do
+        [ -f "certs/$f" ] || missing="$missing certs/$f"
+    done
+    if [ -n "$missing" ]; then
+        echo ">>> test certificates missing:$missing"
+        echo ">>> regenerating them (this overwrites the existing certs)"
         "$ROOT/scripts/gen-certs.sh"
     fi
     echo "$name" > "$STATE_FILE"

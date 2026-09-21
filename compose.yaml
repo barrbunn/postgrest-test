@@ -128,6 +128,7 @@ services:
       PGMAPPER_IDP_AUDIENCE: ${IDP_CLIENT_ID}
       PGMAPPER_DB_POOL_MIN: ${PGMAPPER_DB_POOL_MIN}
       PGMAPPER_DB_POOL_MAX: ${PGMAPPER_DB_POOL_MAX}
+      PGMAPPER_QUERY_POLICY: ${PGMAPPER_QUERY_POLICY:-reject}
     volumes:
       - ./certs:/certs:ro
     healthcheck:

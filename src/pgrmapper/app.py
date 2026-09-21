@@ -13,7 +13,9 @@ modes are supported:
   (HS256), role taken from the JWT `role` claim; anonymous when no token.
 """
 
+import json
 import os
+import re
 import time
 from urllib.parse import parse_qsl, urlencode
 
@@ -84,6 +86,30 @@ def mapper_schema() -> str:
 
 def anon_role() -> str:
     return _env("PGMAPPER_ANON_ROLE", "anon")
+
+
+QUERY_POLICIES = ("allow", "enforce", "reject")
+
+
+def query_policy() -> str:
+    """How requests that reference non-visible columns are handled.
+
+    allow   - forward them (projection is still rewritten)
+    enforce - strip the offending columns/conditions from the request
+    reject  - answer 403 without forwarding
+
+    Unknown values fall back to reject.
+    """
+    policy = _env("PGMAPPER_QUERY_POLICY", "reject").strip().lower()
+    return policy if policy in QUERY_POLICIES else "reject"
+
+
+def _error(status: int, message: str) -> Response:
+    return Response(
+        content=json.dumps({"error": message}),
+        status_code=status,
+        headers={"content-type": "application/json"},
+    )
 
 
 def _q(ident: str) -> str:
@@ -232,16 +258,20 @@ def resolve_role(request: Request) -> str:
     return anon_role()
 
 
-def split_top_level(select: str) -> list[str]:
+def split_top_level(value: str) -> list[str]:
+    """Split on commas that are not nested in (), [] or {}, nor quoted."""
     parts: list[str] = []
     depth = 0
+    quoted = False
     current: list[str] = []
-    for ch in select:
-        if ch == "(":
+    for ch in value:
+        if ch == '"':
+            quoted = not quoted
+        elif ch in "([{":
             depth += 1
-        elif ch == ")":
+        elif ch in ")]}":
             depth -= 1
-        if ch == "," and depth == 0:
+        if ch == "," and depth == 0 and not quoted:
             parts.append("".join(current).strip())
             current = []
         else:
@@ -250,45 +280,307 @@ def split_top_level(select: str) -> list[str]:
     return [p for p in parts if p]
 
 
-def transform_query(query: str, visible: list[str]) -> tuple[str, bool]:
-    """Rewrite the query string's select= against the visible columns.
+def _is_embed(part: str) -> bool:
+    return "(" in part and "::" not in part
 
-    Returns (new_query, blocked). blocked=True when the intersection of the
-    requested columns with the visible ones is empty.
+
+def _column_base(ref: str) -> str:
+    base = ref.split("->")[0]
+    base = base.split("::")[0]
+    return base.split(":")[-1].strip()
+
+
+def _column_error(base: str, resource: str, role: str) -> str:
+    prefix = f"{resource}." if resource else ""
+    return f"column {prefix}{base} is not visible for role {role}"
+
+
+def _split_embed(part: str) -> tuple[str, str]:
+    name, _, inner = part.partition("(")
+    inner = inner.strip()
+    if inner.endswith(")"):
+        inner = inner[:-1]
+    resource = name.split(":")[-1].split("!")[0].strip().lstrip(".")
+    return resource, inner
+
+
+def _embed_aliases(select: str | None) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    if not select:
+        return aliases
+    for part in split_top_level(select):
+        if not _is_embed(part):
+            continue
+        name = part.split("(", 1)[0].strip().lstrip(".")
+        if ":" in name:
+            alias, _, resource = name.rpartition(":")
+            resource = resource.split("!")[0].strip()
+            if alias.strip() and resource:
+                aliases[alias.strip()] = resource
+    return aliases
+
+
+def _transform_select(select: str | None, role: str, rules: dict, policy: str,
+                      visible: list[str], resource: str,
+                      is_embed: bool = False) -> tuple[str | None, str | None]:
+    """Rewrite a select expression against the visible columns.
+
+    Returns (new_select, error). new_select=None drops an embedded resource;
+    error is set when the request must be rejected (reject policy, or nothing
+    visible left at the top level).
     """
-    params = parse_qsl(query, keep_blank_values=True)
+    if select is None or select.strip() in ("", "*"):
+        return ",".join(visible), None
+    kept: list[str] = []
+    for part in split_top_level(select):
+        if _is_embed(part):
+            if policy == "allow":
+                kept.append(part)
+                continue
+            new_part, error = _transform_embed(part, role, rules, policy)
+            if error:
+                return None, error
+            if new_part is not None:
+                kept.append(new_part)
+            continue
+        base = _column_base(part)
+        if base == "*":
+            kept.extend(visible)
+        elif base in visible:
+            kept.append(part)
+        elif policy == "reject":
+            return None, _column_error(base, resource, role)
+    deduped: list[str] = []
+    seen: set = set()
+    for part in kept:
+        if part not in seen:
+            seen.add(part)
+            deduped.append(part)
+    if not deduped:
+        if is_embed:
+            return None, None
+        return None, f"role {role} has no visible columns on {resource}"
+    return ",".join(deduped), None
+
+
+def _transform_embed(part: str, role: str, rules: dict,
+                     policy: str) -> tuple[str | None, str | None]:
+    resource, inner = _split_embed(part)
+    visible = rules.get((role, resource))
+    if visible is None:
+        return part, None
+    if not visible:
+        if policy == "reject":
+            return None, f"role {role} has no visible columns on {resource}"
+        return None, None
+    new_inner, error = _transform_select(inner, role, rules, policy, visible,
+                                         resource, is_embed=True)
+    if error:
+        return None, error
+    if new_inner is None:
+        return None, None
+    return f"{part.split('(', 1)[0]}({new_inner})", None
+
+
+def _check_column(ref: str, visible: list[str], resource: str, role: str,
+                  policy: str) -> tuple[bool, str | None]:
+    base = _column_base(ref)
+    if base in visible:
+        return True, None
+    if policy == "reject":
+        return False, _column_error(base, resource, role)
+    return False, None
+
+
+def _transform_condition(cond: str, visible: list[str], resource: str, role: str,
+                         policy: str) -> tuple[str | None, str | None]:
+    s = cond.strip()
+    match = re.match(r"^(not\.)?(and|or)\s*\((.*)\)$", s, re.DOTALL)
+    if match:
+        prefix = "not." if match.group(1) else ""
+        new_inner, error = _transform_expr(match.group(3), visible, resource, role, policy)
+        if error:
+            return None, error
+        if new_inner is None:
+            return None, None
+        return f"{prefix}{match.group(2)}({new_inner})", None
+    base = _column_base(s.split(".")[0])
+    if base in visible:
+        return s, None
+    if policy == "reject":
+        return None, _column_error(base, resource, role)
+    return None, None
+
+
+def _transform_expr(expr: str, visible: list[str], resource: str, role: str,
+                    policy: str) -> tuple[str | None, str | None]:
+    kept: list[str] = []
+    for cond in split_top_level(expr):
+        new_cond, error = _transform_condition(cond, visible, resource, role, policy)
+        if error:
+            return None, error
+        if new_cond is not None:
+            kept.append(new_cond)
+    if not kept:
+        return None, None
+    return ",".join(kept), None
+
+
+def _transform_tree(value: str, visible: list[str], resource: str, role: str,
+                    policy: str) -> tuple[str | None, str | None]:
+    inner = value.strip()
+    if inner.startswith("(") and inner.endswith(")"):
+        inner = inner[1:-1]
+    new_inner, error = _transform_expr(inner, visible, resource, role, policy)
+    if error:
+        return None, error
+    if new_inner is None:
+        return None, None
+    return f"({new_inner})", None
+
+
+def _transform_order_embed(item: str, role: str, rules: dict, aliases: dict,
+                           policy: str) -> tuple[str | None, str | None]:
+    name, _, remainder = item.partition("(")
+    inner, close, suffix = remainder.rpartition(")")
+    raw = name.split(":")[-1].split("!")[0].strip().lstrip(".")
+    resource = aliases.get(raw, raw)
+    visible = rules.get((role, resource))
+    if visible is None:
+        return item, None
+    if not visible:
+        if policy == "reject":
+            return None, f"role {role} has no visible columns on {resource}"
+        return None, None
+    new_inner, error = _transform_order(inner, visible, resource, role, rules,
+                                        aliases, policy)
+    if error:
+        return None, error
+    if new_inner is None:
+        return None, None
+    return f"{name}({new_inner}){suffix if close else ''}", None
+
+
+def _transform_order(value: str, visible: list[str], resource: str, role: str,
+                     rules: dict, aliases: dict,
+                     policy: str) -> tuple[str | None, str | None]:
+    kept: list[str] = []
+    for item in split_top_level(value):
+        s = item.strip()
+        if not s:
+            continue
+        if _is_embed(s):
+            new_item, error = _transform_order_embed(s, role, rules, aliases, policy)
+            if error:
+                return None, error
+            if new_item is not None:
+                kept.append(new_item)
+            continue
+        base = _column_base(s.split(".")[0])
+        if base in visible:
+            kept.append(s)
+        elif policy == "reject":
+            return None, _column_error(base, resource, role)
+    if not kept:
+        return None, None
+    return ",".join(kept), None
+
+
+def _transform_param(key: str, value: str, role: str, rules: dict, aliases: dict,
+                     table: str, visible: list[str],
+                     policy: str) -> tuple[tuple[str, str] | None, str | None]:
+    if key in ("limit", "offset"):
+        return (key, value), None
+    resource: str | None = None
+    rest = key
+    if key not in ("and", "or", "not.and", "not.or") and "." in key:
+        raw, _, rest = key.partition(".")
+        raw = raw.split("!")[0].strip()
+        resource = aliases.get(raw, raw)
+
+    if rest in ("and", "or", "not.and", "not.or"):
+        if resource is None:
+            target_visible, label = visible, table
+        else:
+            target_visible, label = rules.get((role, resource)), resource
+            if target_visible is None:
+                return (key, value), None
+        if not target_visible:
+            return None, f"role {role} has no visible columns on {label}"
+        new_value, error = _transform_tree(value, target_visible, label, role, policy)
+        if error:
+            return None, error
+        if new_value is None:
+            return None, None
+        return (key, new_value), None
+
+    if resource is None:
+        target_visible, label = visible, table
+    else:
+        target_visible, label = rules.get((role, resource)), resource
+        if target_visible is None:
+            return (key, value), None
+        if not target_visible:
+            return None, f"role {role} has no visible columns on {label}"
+
+    if rest in ("limit", "offset"):
+        return (key, value), None
+    if rest == "order":
+        new_value, error = _transform_order(value, target_visible, label, role,
+                                            rules, aliases, policy)
+        if error:
+            return None, error
+        if new_value is None:
+            return None, None
+        return (key, new_value), None
+
+    allowed, error = _check_column(rest, target_visible, label, role, policy)
+    if error:
+        return None, error
+    return ((key, value), None) if allowed else (None, None)
+
+
+def transform_query(query: str, table: str, role: str,
+                    rules: dict) -> tuple[str, str | None]:
+    """Apply PGMAPPER_QUERY_POLICY to a query string.
+
+    The select projection is always rewritten against the visible columns.
+    Other parameters (filters, order, logic trees, embedded-resource
+    references) are handled per policy: forwarded (allow), stripped (enforce)
+    or rejected with an error message (reject).
+
+    Returns (new_query, error).
+    """
+    policy = query_policy()
+    visible = rules.get((role, table)) or []
+    if not visible:
+        return query, f"role {role} has no visible columns on {table}"
     select = None
-    rest = []
-    for key, value in params:
+    rest: list[tuple[str, str]] = []
+    for key, value in parse_qsl(query, keep_blank_values=True):
         if key.lower() == "select":
             select = value
         else:
             rest.append((key, value))
 
-    if select is None or select.strip() in ("", "*"):
-        new_select = ",".join(visible)
-    else:
-        kept: list[str] = []
-        for part in split_top_level(select):
-            if "(" in part:
-                kept.append(part)  # embedded resource: pass through
-                continue
-            base = part.split("->")[0].split(":")[-1].strip()
-            if base == "*":
-                kept.extend(visible)
-            elif base in visible:
-                kept.append(part)
-        deduped = []
-        seen = set()
-        for part in kept:
-            if part not in seen:
-                seen.add(part)
-                deduped.append(part)
-        if not deduped:
-            return query, True
-        new_select = ",".join(deduped)
+    aliases = _embed_aliases(select)
+    new_select, error = _transform_select(select, role, rules, policy, visible, table)
+    if error:
+        return query, error
 
-    return urlencode([("select", new_select)] + rest), False
+    kept_rest: list[tuple[str, str]] = []
+    if policy != "allow":
+        for key, value in rest:
+            pair, error = _transform_param(key, value, role, rules, aliases, table,
+                                           visible, policy)
+            if error:
+                return query, error
+            if pair is not None:
+                kept_rest.append(pair)
+    else:
+        kept_rest = rest
+
+    return urlencode([("select", new_select)] + kept_rest), None
 
 
 def _forward(request: Request, path: str, query_override: str | None = None) -> Response:
@@ -313,26 +605,15 @@ def make_handler(table: str):
         try:
             role = resolve_role(request)
         except AuthError as ex:
-            return Response(
-                content=f'{{"error":"{ex}"}}',
-                status_code=401,
-                headers={"content-type": "application/json"},
-            )
-        visible = load_access_filter().get((role, table))
+            return _error(401, str(ex))
+        rules = load_access_filter()
+        visible = rules.get((role, table))
         if visible is not None:
             if not visible:
-                return Response(
-                    content=f'{{"error":"role {role} has no visible columns on {table}"}}',
-                    status_code=403,
-                    headers={"content-type": "application/json"},
-                )
-            new_query, blocked = transform_query(request.url.query or "", visible)
-            if blocked:
-                return Response(
-                    content=f'{{"error":"role {role} has no visible columns on {table}"}}',
-                    status_code=403,
-                    headers={"content-type": "application/json"},
-                )
+                return _error(403, f"role {role} has no visible columns on {table}")
+            new_query, error = transform_query(request.url.query or "", table, role, rules)
+            if error:
+                return _error(403, error)
             return _forward(request, f"/{table}", query_override=new_query)
         return _forward(request, f"/{table}")
 
