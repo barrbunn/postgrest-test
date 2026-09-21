@@ -21,6 +21,18 @@ pgrmapper = "pgrmapper.server:main"
 pgjwt = "pgjwt.cli:app"
 pgmkcurl = "pgmkcurl.cli:app"
 
+[dependency-groups]
+test = [
+    "pytest>=8",
+    "behave>=1.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+markers = [
+    "integration: requires a running podman machine (ephemeral postgres container)",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
